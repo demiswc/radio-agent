@@ -64,15 +64,40 @@ Digirig or SignaLink work the same way.
 
 ### Or: a custom cable with VOX
 
-1. **Receive:** radio **speaker out** (3.5 mm on most handhelds) → the computer's **line in** (blue
-   socket), or the input of a cheap USB sound card. Line in is better than mic in, which has too
-   much gain and puts a bias voltage on the plug. Set the radio volume to about a third.
-2. **Transmit (optional):** computer **speaker/headphone out** → an **attenuator** → the radio's **mic
-   input**. A line-level signal is far too hot for a mic input; a resistor divider of roughly 40 dB
-   (e.g. 10 kΩ / 100 Ω) works. Turn **VOX on** in the base radio.
-3. If you hear hum, add a **ground loop isolator** on the audio leads.
+**Know your K1 socket first.** On Baofeng, Quansheng and other Kenwood-style (K1) handhelds:
 
-Check your own radio's K1 pinout before soldering anything.
+| Socket | Carries | Tip | Ring | Sleeve |
+|---|---|---|---|---|
+| **2.5 mm** | **speaker out** | speaker + | TX data | ground |
+| **3.5 mm** | **mic in** | mic bias (+V) | mic + | mic − |
+
+**The radio keys PTT when the two sleeves are joined.** A computer's audio input and output share a
+ground, so if both leads go straight into the PC the sleeves meet and the radio sits **stuck in
+transmit**. (Ask us how we know: a 3.5 mm lead in the "obvious" socket keyed the radio on the first
+night, because that socket is the mic.)
+
+1. **Receive:** radio **2.5 mm speaker** socket → the computer's **line in** (blue socket), or the
+   input of a cheap USB sound card. An off-the-shelf "2.5 mm to 3.5 mm stereo cable" does it, no
+   soldering. With only this plug connected the radio **cannot key up**. Use line in, not mic in:
+   mic in has too much gain and puts a bias voltage on the plug. Set the radio volume to about a third.
+2. **Transmit (optional):** computer **headphone/line out** → a **ground loop isolator** (a
+   transformer dongle, so the two sleeves never meet) → an **attenuator** → the radio's **3.5 mm mic**
+   socket. A line-level signal is far too hot for a mic input; a 10 kΩ / 100 Ω divider (about 40 dB)
+   works, with a 1 µF capacitor to keep the radio's mic bias off it:
+
+   ```
+   PC out → [ground loop isolator] → tip ──[10k]──┬──[1µF]──► 3.5 mm RING   (mic +)
+                                     sleeve ──────┴──[100Ω]─► 3.5 mm SLEEVE (mic −)
+                                                              3.5 mm TIP (bias): not connected
+   ```
+
+   Turn **VOX on** in the base radio. A cut-in-half 3.5 mm stereo lead makes this cable.
+3. **Before going on air:** with both leads plugged into the PC, check with a multimeter that there is
+   **no continuity** between the 2.5 mm sleeve and the 3.5 mm sleeve. Then, with the radio on low
+   power, plug in and make sure the TX light stays off.
+
+Check your own radio's pinout before soldering anything – not every radio with a two-pin socket is
+wired the same.
 
 ```yaml
 radio:
@@ -85,7 +110,7 @@ radio:
 
 ### Simplest start: receive only
 
-Wire just the receive side and set `reply: speaker` (answers come out of the PC speakers) or
+Wire just the receive side (the 2.5 mm speaker lead above) and set `reply: speaker` (answers come out of the PC speakers) or
 `reply: screen` (text only). Nothing is transmitted, so you don't need a licence check for the PC
 side. It's also the best way to get Whisper and squelch working before adding TX.
 
