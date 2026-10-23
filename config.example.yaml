@@ -1,0 +1,116 @@
+# radio-agent configuration
+# Copy to config.yaml and edit. Every key has a default, so you only need to set what changes.
+
+station:
+  callsign: "N0CALL"          # YOUR callsign – change this. Spoken phonetically when the station IDs
+  id_every_over: true         # true = ID after every over; false = first reply, every id_interval_seconds, and on sign-off
+  id_interval_seconds: 600
+  operator: ""                # your own call, if it's not the station's (shown on the screens)
+  # Screen-only: shown on the demo page and the run.bat banner
+  name: ""                    # e.g. "Stephen" – the character the agent plays
+  qth: ""                     # e.g. "Rockall"
+  locator: ""                 # Maidenhead locator, e.g. IO37do
+  frequency: ""               # dial shown on the screens, e.g. "145.660"; blank = rtlsdr.frequency
+
+radio:
+  # "text"      – type at the keyboard, replies printed. No audio. Great for testing the loop.
+  # "soundcard" – real radio via a USB sound card (AIOC, Digirig, CM108 dongle...)
+  # "dmr"       – DMR handheld via your MMDVM hotspot + DVSwitch Analog_Bridge (see docs/dmr.md)
+  mode: text
+  # How the agent answers you:
+  #   "radio"   – transmits the reply back over the base radio (needs PTT/VOX + ID)
+  #   "speaker" – reads the reply out on the PC speakers, nothing transmitted
+  #   "screen"  – shows it in the terminal and the sidecar page only (receive-only station)
+  reply: radio
+  input_device: null          # sounddevice name/index; null = default. Run `radio-agent devices` to list.
+  output_device: null
+  sample_rate: 16000          # Baofeng audio is narrowband; 16 kHz is plenty and what Whisper wants
+  squelch_threshold: 0.02     # RMS level that counts as "someone is talking". Tune with `radio-agent calibrate`.
+  open_ms: 120                # audio must stay above threshold this long to start recording
+  hang_ms: 900                # silence this long ends your over
+  max_listen_seconds: 60
+  ptt:
+    # "vox"    – no PTT line; enable VOX on the base radio (Plan B / Plan C)
+    # "serial" – key PTT with DTR/RTS on a serial port (AIOC shows up as /dev/ttyACM0)
+    # "none"   – don't transmit at all (receive-only testing)
+    type: vox
+    port: /dev/ttyACM0
+    # AIOC default: PTT asserted with DTR=1, RTS=0. Check your cable's docs and flip if needed.
+    assert_dtr: true
+    assert_rts: false
+    tx_delay_ms: 300          # key up, wait for the radio to start transmitting, then talk
+    tx_tail_ms: 200
+  vox_lead_in_ms: 250         # VOX mode: short tone before speech so VOX opens without clipping words
+  max_tx_seconds: 45          # hard cap per transmission; long replies are split into several overs
+
+dmr:
+  # Only used when radio.mode is "dmr". Ports must match Analog_Bridge.ini [USRP].
+  listen_port: 32001          # = Analog_Bridge txPort (it sends voice to us)
+  bridge_port: 34001          # = Analog_Bridge rxPort (we send replies to it)
+  end_of_over_timeout: 1.0    # seconds of no frames = end of over (if no keyup=0 arrives)
+  # Only answer these stations. DMR IDs aren't authenticated, but it stops strays. Empty = anyone.
+  allowed_callsigns: []      # e.g. ["N0CALL"] to answer only your own DMR radio
+  allowed_ids: []
+
+listen:
+  # Words that wake the agent when it's idle. After a reply it stays "in conversation"
+  # for conversation_window_seconds so you don't need the wake word every over.
+  wake_words: ["claude", "agent", "computer"]
+  conversation_window_seconds: 180
+  # Optional DTMF PIN. If set, key  * <pin> #  on your handheld to unlock. Re-locks after idle.
+  # Remember DTMF is sent in the clear – this stops randoms, not a determined listener.
+  pin: null
+  lock_after_idle_seconds: 900
+
+stt:
+  # "faster-whisper" (local), "openai" (API, good for Pi Zero), "none" (text mode)
+  backend: faster-whisper
+  model: base.en              # tiny.en for a Pi 4, small.en if you have the CPU
+  openai_model: whisper-1
+  # Words Whisper should expect – helps a lot with jargon and callsigns
+  hint: "N0CALL, Claude, radio check, over, confirm, negative, Next.js, Prisma, npm, git"
+
+agent:
+  # "claude-code" – runs the Claude Code CLI in your project folder. Can read, edit, run tests.
+  # "anthropic" / "openai" / "ollama" – plain chat (no file access), good for Q&A
+  # "echo" – repeats you back. For testing the radio side.
+  backend: claude-code
+  workdir: ~/radio-sandbox    # project the agent works in. Keep it a sandbox, not production!
+  # Tools Claude Code may use once you say "confirm". Reading is always allowed.
+  allowed_tools: ["Read", "Edit", "Write", "Glob", "Grep", "Bash(npm test:*)", "Bash(npm run:*)", "Bash(git diff:*)", "Bash(git status:*)"]
+  model: null                 # e.g. claude-sonnet-4-5 / gpt-4o-mini / llama3.1:8b
+  persona: ""                 # optional character for the agent to play, added to its instructions
+  ollama_url: http://localhost:11434
+  timeout_seconds: 600
+
+tts:
+  # "piper" (local, natural), "espeak" (robotic but everywhere), "sapi" (Windows built-in voices),
+  # "dectalk" (Windows, classic 1980s voices), "openai", "print" (text mode)
+  backend: piper
+  sapi_voice: ""              # e.g. "Microsoft George Desktop"; blank = first British voice installed
+  piper_model: ~/piper/en_GB-alan-medium.onnx
+  openai_voice: onyx
+
+sstv:
+  # Say "SSTV" in an over and a slow-scan picture of the station paints on the /demo page; "close" shuts it
+  seconds: 5                  # how long it takes to paint
+  play_audio: false           # true = also play real, decodable SSTV audio out of the reply output (full mode length)
+  mode: robot36               # robot36 (36 s) | martin1 (115 s)
+  folder: sstv                # your own photos to send (jpg/png); none there = the built-in picture
+  picture: testcard           # built-in picture: testcard | rockall
+
+cq:
+  enabled: false              # the station calls CQ on its own at random intervals, pausing during a QSO
+  interval_seconds: [60, 120]
+  first_after_seconds: 20
+  quiet_after_seconds: 45     # resume this long after the last thing heard or said in a QSO
+  on_air: false               # allow automatic CQs over the radio (unattended TX – check your licence)
+
+sidecar:
+  # Small web page for the stuff that doesn't speak well: code, diffs, paths, logs.
+  enabled: true
+  host: 0.0.0.0
+  port: 8073
+  token: change-me            # open http://<pi>:8073/?t=change-me on your phone
+  open_demo: false            # open the WSJT-X style demo screen (…/demo?t=…) in the browser at start-up
+  title: RADIO-AGENT          # name shown on the demo screen

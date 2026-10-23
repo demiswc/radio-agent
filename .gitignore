@@ -1,0 +1,17 @@
+__pycache__/
+*.egg-info/
+.venv/
+.env
+.pytest_cache/
+
+# your own station settings (callsign, devices, token) stay on your machine
+config.yaml
+
+# local output
+recordings/
+logs/
+.backup-before-demo/
+
+# photos you put in sstv/ for the station to send
+sstv/*
+!sstv/README.txt

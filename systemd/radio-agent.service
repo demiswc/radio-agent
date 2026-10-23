@@ -1,0 +1,15 @@
+[Unit]
+Description=radio-agent – AI coding agent over amateur radio
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/radio-agent
+EnvironmentFile=-/home/pi/radio-agent/.env
+ExecStart=/home/pi/radio-agent/.venv/bin/radio-agent run -c /home/pi/radio-agent/config.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

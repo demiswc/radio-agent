@@ -1,0 +1,29 @@
+[project]
+name = "radio-agent"
+version = "0.1.0"
+description = "Talk to an AI coding agent over amateur radio from a Baofeng handheld"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+  "numpy>=1.24",
+  "pyyaml>=6",
+  "rich>=13",
+  "pillow>=10",
+]
+
+[project.optional-dependencies]
+# Real radio: sound card in/out + serial PTT (AIOC, Digirig, etc.)
+radio = ["sounddevice>=0.4", "pyserial>=3.5"]
+# Local speech-to-text (Pi 4/5 or better)
+whisper = ["faster-whisper>=1.0"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+radio-agent = "radio_agent.__main__:main"
+
+[tool.setuptools]
+packages = ["radio_agent"]
+
+[tool.setuptools.package-data]
+radio_agent = ["demo.html"]
