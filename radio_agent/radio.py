@@ -55,9 +55,13 @@ class _SerialPTT:
     def __init__(self, port: str, assert_dtr: bool, assert_rts: bool):
         import serial  # pyserial
 
-        self.ser = serial.Serial(port)
+        # Serial(port) opens straight away with DTR and RTS asserted, which keys the radio for a
+        # moment. Set the lines to "off" first: pyserial applies them as the port opens.
+        self.ser = serial.Serial()
+        self.ser.port = port
         self.on_dtr, self.on_rts = assert_dtr, assert_rts
         self.off()
+        self.ser.open()
 
     def on(self) -> None:
         self.ser.dtr, self.ser.rts = self.on_dtr, self.on_rts
@@ -142,7 +146,7 @@ class SoundcardRadio:
             return
         audio = resample(audio, sr, self.sample_rate)
         cap = int(self.r["max_tx_seconds"] * self.sample_rate)
-        audio = audio[:cap]
+        audio = tx_level(audio[:cap], float(self.r.get("tx_gain", 1.0)))
         if self.ptt_type == "vox":
             n = int(self.sample_rate * self.r["vox_lead_in_ms"] / 1000)
             t = np.arange(n) / self.sample_rate
@@ -234,6 +238,24 @@ def collect_over(read_block, r: dict, start_timeout: float | None = None, info: 
             break
     # keep ~0.3 s after the last loud block: the soft end of "over" is often below the threshold
     return np.concatenate(rec[: len(rec) - quiet + 15]) if rec else np.zeros(0, np.float32)
+
+
+def tx_level(audio: np.ndarray, gain: float, peak: float = 0.9) -> np.ndarray:
+    """Set the transmit level: normalise to `peak`, then apply radio.tx_gain.
+
+    Every voice and picture then goes out at the same level, and tx_gain alone sets how hard the
+    radio's mic input is driven. Above 1, quiet parts get the full gain and peaks are rounded off,
+    so it never clips.
+    """
+    top = float(np.abs(audio).max()) if len(audio) else 0.0
+    y = audio * (peak / top) if top > 1e-6 else audio.copy()
+    y = y * gain
+    if gain <= 1.0:
+        return y.astype(np.float32)
+    knee = 0.6
+    over = np.abs(y) > knee
+    y[over] = np.sign(y[over]) * (knee + (1 - knee) * np.tanh((np.abs(y[over]) - knee) / (1 - knee)))
+    return y.astype(np.float32)
 
 
 def resample(audio: np.ndarray, sr_in: int, sr_out: int) -> np.ndarray:

@@ -4,26 +4,29 @@
   radio-agent devices                    list sound cards
   radio-agent calibrate [-c ...]         show live receive levels to set squelch_threshold
   radio-agent say "text" [-c ...]        transmit a test phrase (with ID)
+  radio-agent ptt-test [-c ...]          key the transmitter for 3 seconds, then unkey
 """
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import threading
 import time
 from contextlib import contextmanager
 
-from . import agents, config, cq, radio, speech, sstv, stt, tts
+from . import agents, config, contact, cq, qso, radio, speech, sstv, stt, tts, wefax
 from .events import Bus, log, setup_logging
 from .sidecar import Log, over_stats, serve
 from .station import Station
 
 
 class Transmitter:
-    """Speaks replies: splits long ones into several overs, ends each one properly.
+    """Speaks replies: splits long ones into several overs and frames each one (qso.py).
 
-    The callsign goes out on the first reply of a QSO, then only every id_interval_seconds, and
-    always when signing off ("…, N0CALL, clear") – not after every single over.
+    The agent only writes the message; the callsigns, "over" and "clear" are added here: the full
+    phonetic ID on the first over of a QSO and every id_interval_seconds, the short form in between,
+    and the sign-off when the QSO ends.
     """
 
     def __init__(self, cfg: dict, rad, voice, log: Log | None = None):
@@ -31,18 +34,22 @@ class Transmitter:
         self.log = log or Log()
         self.air = threading.RLock()  # one thing on air at a time: speech waits for a playing picture
         self._cq: str | None = None   # set while calling CQ: what the screens show for it
-        self.phonetic = speech.phonetic(cfg["station"]["callsign"])
-        self.ident = f"This is {self.phonetic}."
-        self.last_id = -1e9           # when the callsign last went out
-        self.last_reply = -1e9        # when we last answered someone (CQ calls don't count)
-        # ~14 characters per second of speech; leave room for the ID
-        self.max_chars = max(80, int(cfg["radio"]["max_tx_seconds"] * 14) - len(self.ident) - 10)
+        self.qso = qso.QSO(cfg, clock=lambda: time.time())
+        # ~14 characters per second of speech; leave room for the callsigns round each over
+        self.max_chars = max(80, int(cfg["radio"]["max_tx_seconds"] * 14) - 110)
 
-    def send(self, text: str, final_over: bool = True, signoff: bool = False) -> None:
-        """final_over=False is the "Roger, stand by" while the agent is still working.
-        signoff=True: the QSO is ending, so finish with the callsign and "clear"."""
+    def send(self, text: str, final_over: bool = True, signoff: bool = False, heard: str = "",
+             caller: str = "") -> None:
+        """final_over=False is the "Roger, stand by" while the agent is still working (no callsigns).
+        signoff=True: the QSO is ending, so finish with seventy-three and "clear".
+        heard / caller: the over being answered, which names the other station at the start of a QSO."""
         with self.air:
-            self._send(text, final_over, signoff)
+            if not final_over:
+                self._play([qso.Over(text, "", "", "")], ack=True)
+                return
+            on_air = self.cfg["radio"].get("reply", "radio") == "radio"
+            chunks = speech.chunk_sentences(text, self.max_chars) if on_air else [text]
+            self._play(self.qso.frame(chunks, closing=signoff, heard=heard, caller=caller))
 
     def send_cq(self, spoken: str, display: str) -> bool:
         """Call CQ – only if nothing else is on air right now; never queue up behind a reply."""
@@ -50,64 +57,38 @@ class Transmitter:
             return False
         try:
             self._cq = display
-            self._send(spoken, final_over=True)
-            self.last_id = time.time()  # a CQ call carries the callsign
+            self.qso.end()  # whoever answers starts a new QSO, with the full ID
+            self.qso.last_cq = time.time()
+            self._play([qso.Over(spoken, "", "", "")])
         finally:
             self._cq = None
             self.air.release()
         return True
 
-    def _id_tail(self, final_over: bool, signoff: bool) -> str:
-        """How this over ends: a sign-off with the callsign, an occasional ID, or just "over"."""
-        st = self.cfg["station"]
-        on_air = self.cfg["radio"].get("reply", "radio") == "radio"
-        if not final_over:  # "Roger, stand by" – the real answer follows
-            return ""
-        now = time.time()
-        new_qso = now - self.last_reply > float(self.cfg["listen"]["conversation_window_seconds"])
-        self.last_reply = now
-        if signoff:
-            self.last_id = now
-            return f" This is {self.phonetic}, {st['callsign']}, clear."
-        if st.get("id_every_over") or new_qso or now - self.last_id >= float(st.get("id_interval_seconds", 600)):
-            self.last_id = now
-            return f" This is {self.phonetic}, over." if on_air else f" This is {self.phonetic}."
-        return " Over." if on_air else ""
-
-    def _send(self, text: str, final_over: bool, signoff: bool = False) -> None:
+    def _play(self, overs: list, ack: bool = False) -> None:
         reply = self.cfg["radio"].get("reply", "radio")
-        ack = not final_over
-        tail = "" if self._cq else self._id_tail(final_over, signoff)  # a CQ call carries its own ID
-        if reply == "screen" or (reply == "speaker" and self.cfg["radio"]["mode"] == "text"):
-            # Receive-only station: nothing goes on air, so no chunking
-            text = (text + tail).strip()
-            log.info(f"🖥  agent> {text}")
-            with self._on_air(text, None, ack):
-                pass
-            return
-        if reply == "speaker":
-            text = (text + tail).strip()
-            synth = self.voice.synth(text)
-            log.info(f"🔈 agent> {text}")
-            with self._on_air(text, synth, ack):
-                if synth is not None:
-                    import sounddevice as sd
-                    audio, sr = synth
-                    sd.play(audio, sr, device=self.cfg["radio"]["output_device"], blocking=True)
-            return
-        chunks = speech.chunk_sentences(text, self.max_chars)
-        for i, chunk in enumerate(chunks):
-            last = i == len(chunks) - 1
-            line = (chunk + (tail if last else " Continuing.")).strip()
-            synth = self.voice.synth(line)
-            log.info(f"📡 TX: {line}")
-            with self._on_air(line, synth, ack):
-                if synth is None:
-                    self.radio.transmit_text(line)
+        for i, over in enumerate(overs):
+            shown = speech.unmark(over.spoken)
+            if reply == "screen" or (reply == "speaker" and self.cfg["radio"]["mode"] == "text"):
+                # Receive-only station: nothing goes on air
+                log.info(f"🖥  agent> {shown}")
+                with self._on_air(shown, None, ack, over):
+                    pass
+                continue
+            synth = self.voice.synth(over.spoken)
+            log.info(f"🔈 agent> {shown}" if reply == "speaker" else f"📡 TX: {shown}")
+            with self._on_air(shown, synth, ack, over):
+                if reply == "speaker":
+                    if synth is not None:
+                        import sounddevice as sd
+                        audio, sr = synth
+                        sd.play(audio, sr, device=self.cfg["radio"]["output_device"], blocking=True)
+                elif synth is None:
+                    self.radio.transmit_text(shown)
                 else:
                     audio, sr = synth
                     self.radio.transmit_audio(audio, sr)
-            if not last:
+            if i < len(overs) - 1:
                 time.sleep(1.5)  # gap so others can break in
 
     def send_sstv(self, subject: str = "picture") -> None:
@@ -118,6 +99,27 @@ class Transmitter:
         """
         threading.Thread(target=self._sstv, args=(subject,), daemon=True).start()
 
+    def sstv_ready(self, subject: str) -> bool:
+        """Can this request go straight away? A weather fax with no area waits for the agent to pick one."""
+        if not self._wants_wefax(subject):
+            return True
+        return bool(re.search(r"https?://", subject)) or wefax.names_region(subject)
+
+    _QSL = re.compile(r"\b(qsl|card|picture|photo|photograph|selfie|snapshot)\b", re.I)
+    _FORECAST = re.compile(r"\b(forecast|chart|weather|winds?|waves?|swell|sea state|pressure|isobars?|satellite|"
+                           r"hurricanes?|cyclones?|synoptic|\d+\s?(h|hr|hour))\b", re.I)
+
+    def _wants_wefax(self, subject: str) -> bool:
+        """A weather chart, or the station's own SSTV picture (its QSL card)? Both paint in the same window."""
+        s = subject.strip().lower()
+        if wefax.asks_for_wefax(subject) or s.startswith(("http://", "https://")) or s.split(" ")[0] in wefax.REGIONS:
+            return True
+        if s == "picture" or self._QSL.search(s):
+            return False  # "send me your SSTV QSL card": the picture, never a chart
+        if self._FORECAST.search(s) and wefax.names_region(s):
+            return True   # "SSTV me the 48 hour forecast for Biscay"
+        return self.cfg["sstv"].get("source") == "wefax"
+
     def _sstv(self, subject: str) -> None:
         import os
 
@@ -125,30 +127,46 @@ class Transmitter:
         sc = self.cfg["sstv"]
         mode, play = sc["mode"], bool(sc.get("play_audio"))
         m = sstv.MODES[mode]
-        squeeze = None if play else float(sc.get("seconds") or 5)  # real audio has to take the mode's full time
+        sr = 22050
+        img = None
+        if self._wants_wefax(subject):
+            try:
+                img, caption = wefax.fetch(subject, self.cfg)
+            except Exception as e:
+                log.exception("fetching the WEFAX chart failed")
+                self.log.bus.emit("error", summary=f"WEFAX chart not available ({e}) – sending the station picture")
         try:
-            img = sstv.picture(self.cfg, mode)
+            if img is not None:  # a weather chart: fax-style signal, painted over wefax.seconds
+                seconds = float(self.cfg["wefax"].get("seconds") or 8)
+                audio = sstv.encode_wefax(np.asarray(img.convert("L")), sr, seconds)
+                info = {"label": "WEFAX RX", "mode": "WEFAX 120", "caption": caption,
+                        "header_s": sstv.WEFAX_HEADER_S, "line_s": sstv.wefax_line_seconds(img.height, seconds)}
+                prefix, play = "wefax", False  # a real fax takes ten minutes: show it, don't play it
+            else:
+                squeeze = None if play else float(sc.get("seconds") or 5)  # real audio needs the mode's full time
+                img = sstv.picture(self.cfg, mode)
+                audio = sstv.encode(np.asarray(img), mode, sr, seconds=squeeze)
+                info = {"label": "SSTV RX", "mode": m["name"], "caption": "",
+                        "header_s": sstv.HEADER_S, "line_s": sstv.line_seconds(mode, squeeze)}
+                prefix = "sstv"
             png = sstv.png_bytes(img)
             os.makedirs("logs/sstv", exist_ok=True)
-            path = os.path.join("logs", "sstv", time.strftime("sstv-%Y%m%d-%H%M%S.png"))
+            path = os.path.join("logs", "sstv", time.strftime(f"{prefix}-%Y%m%d-%H%M%S.png"))
             with open(path, "wb") as f:
                 f.write(png)
-            sr = 22050
-            audio = sstv.encode(np.asarray(img), mode, sr, seconds=squeeze)
         except Exception as e:
             log.exception("making the SSTV picture failed")
             self.log.bus.emit("error", summary=f"SSTV failed: {e}")
             return
         seconds = len(audio) / sr
         image_id = self.log.add_image(png)
-        log.info(f"📷 SSTV {subject}: {m['name']} {img.width}x{img.height}, {seconds:.1f}s"
-                 f"{' (playing audio)' if play else ''} -> {path}")
+        log.info(f"📷 {info['label']} {info['mode']} {img.width}x{img.height}, {seconds:.1f}s"
+                 f"{' (playing audio)' if play else ''} {info['caption']} -> {path}")
         reply = self.cfg["radio"].get("reply", "radio")
         with self.air:  # don't talk over our own picture
             self.log.spectrum.play(audio, sr)
-            self.log.bus.emit("sstv", id=image_id, subject=subject, mode=m["name"], seconds=seconds,
-                              header_s=sstv.HEADER_S, line_s=sstv.line_seconds(mode, squeeze),
-                              width=img.width, height=img.height, path=path, audio=play)
+            self.log.bus.emit("sstv", id=image_id, subject=subject, seconds=seconds, width=img.width,
+                              height=img.height, path=path, audio=play, **info)
             try:
                 if not play or reply == "screen" or self.cfg["radio"]["mode"] == "text":
                     time.sleep(seconds)  # the page paints it; nothing goes out
@@ -165,8 +183,9 @@ class Transmitter:
             self.send("That was the picture.")  # the voice ID after the image
 
     @contextmanager
-    def _on_air(self, text: str, synth, ack: bool):
-        """tx_started/tx_done around one spoken piece; its audio goes on the waterfall as it plays."""
+    def _on_air(self, text: str, synth, ack: bool, over=None):
+        """tx_started/tx_done around one spoken piece; its audio goes on the waterfall as it plays.
+        over: the framed over, so the demo screen can show "<them> <us> <message>" like WSJT-X."""
         extra = {}
         if synth is not None:
             audio, sr = synth
@@ -174,6 +193,8 @@ class Transmitter:
             self.log.spectrum.play(audio, sr)
         if self._cq:
             extra.update(cq=True, display=self._cq)
+        elif over is not None and over.de:
+            extra.update(to=over.to, de=over.de, msg=over.msg)
         self.log.bus.emit("tx_started", text=text, ack=ack, **extra)
         try:
             yield
@@ -291,7 +312,9 @@ def _loop(cfg: dict, save_audio: str | None, bus: Bus, ui, rad, say) -> None:
         if sc.get("open_demo"):
             import webbrowser
             webbrowser.open(demo)
-    station = Station(cfg, agent, history, ack=lambda s: tx.send(s, final_over=False), on_sstv=tx.send_sstv)
+    contacts = contact.Contacts(cfg, tx.qso, bus)
+    station = Station(cfg, agent, history, ack=lambda s: tx.send(s, final_over=False), on_sstv=tx.send_sstv,
+                      sstv_ready=tx.sstv_ready, contacts=contacts)
     if cq.allowed(cfg):
         caller = cq.CQCaller(cfg, bus, tx.send_cq, level=lambda: history.spectrum.level)
         caller.start()
@@ -369,13 +392,76 @@ def _loop(cfg: dict, save_audio: str | None, bus: Bus, ui, rad, say) -> None:
             bus.emit("over_finished", text=text, rx_s=rx_total, stt_s=stt_total, ended_by=ended_by)
         rx_total = stt_total = 0.0
         try:
-            reply = station.handle(text or "", heard.dtmf)
+            reply = station.handle(text or "", heard.dtmf, heard.meta)
             if reply:
                 recent = (recent + [text or "", reply])[-4:]
-                tx.send(reply, signoff=station.signoff)
+                tx.send(reply, signoff=station.signoff, heard=text or "", caller=heard.meta.get("callsign", ""))
         except Exception as e:  # one bad over mustn't take the station off air
             log.exception("handling the over failed")
             bus.emit("error", summary=f"{type(e).__name__}: {e}")
+
+
+VOICE_TEST_CALLS = ["MM7DDX", "2M0DDX"]
+
+
+def voice_test(cfg: dict) -> None:
+    """Say each phonetic word, then the test callsigns, on the PC speakers so you can check them by ear.
+
+    Change any that sound wrong with tts.pronunciations in config.yaml."""
+    import sounddevice as sd
+    if cfg["radio"]["mode"] == "text":
+        cfg = {**cfg, "radio": {**cfg["radio"], "mode": "soundcard"}}  # text mode has no voice
+    voice = tts.make(cfg)
+    lexicon = tts.Lexicon(cfg["tts"].get("pronunciations"))
+    calls = VOICE_TEST_CALLS + [c for c in (cfg["station"]["callsign"], cfg["station"].get("operator"))
+                                if c and c.upper() not in VOICE_TEST_CALLS]
+    # marked as station phonetics, so they're said with the NATO table like a real ID
+    letters = list(dict.fromkeys("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"))
+    print(f"Voice test: {cfg['tts']['backend']}. Each line is spoken as it's printed.")
+    for text in [speech.phonetic(ch, mark=True) for ch in letters] + [speech.phonetic(c, mark=True) for c in calls]:
+        print(f"  {speech.unmark(text):<44} → {speech.unmark(lexicon(text))}")
+        out = voice.synth(text)
+        if out is not None:
+            audio, sr = out
+            sd.play(audio, sr, blocking=True)
+        time.sleep(0.4)
+
+
+def check_pronunciation(cfg: dict, compare: bool = False) -> None:
+    """TTS -> Whisper -> compare for the phonetic alphabet and the test callsigns (re-run after changing
+    the voice, the rate or tts.pronunciations)."""
+    from . import voicecheck
+    if cfg["radio"]["mode"] == "text":
+        cfg = {**cfg, "radio": {**cfg["radio"], "mode": "soundcard"}}  # text mode has no voice
+    voice = tts.make(cfg)
+    t = cfg["tts"]
+    detail = f"{t.get('dectalk_voice')} at {t.get('dectalk_rate')} wpm" if t["backend"] == "dectalk" else ""
+    print(f"Pronunciation check: {t['backend']} {detail} -> Whisper {cfg['stt']['model']} (no hint prompt)")
+    ears = voicecheck.make_ears(cfg)
+    calls = [cfg["station"]["callsign"], cfg["station"].get("operator") or ""]
+    print(voicecheck.table(voicecheck.check(cfg, voice, ears, calls)))
+    if compare:
+        print("\nEach word plain / respelled / as DECtalk phonemes (put winners in tts.pronunciations):")
+        print(voicecheck.compare_table(voicecheck.compare(cfg, voice, ears)))
+
+
+def ptt_test(cfg: dict, seconds: float = 3.0) -> None:
+    """Key the transmitter on its own, no audio: checks the PTT wiring and the serial port."""
+    p = cfg["radio"]["ptt"]
+    if p["type"] != "serial":
+        print(f"radio.ptt.type is {p['type']!r}: there's no PTT line to key. Set it to serial to test one.")
+        return
+    lines = " and ".join(n for n, on in (("DTR", p["assert_dtr"]), ("RTS", p["assert_rts"])) if on) or "no line"
+    ptt = radio._SerialPTT(p["port"], p["assert_dtr"], p["assert_rts"])
+    print(f"Opened {p['port']} unkeyed (DTR={ptt.ser.dtr}, RTS={ptt.ser.rts}).")
+    try:
+        print(f"Keying: asserting {lines} for {seconds:g} seconds...", flush=True)
+        ptt.on()
+        start = time.time()
+        time.sleep(seconds)
+    finally:
+        ptt.close()  # unkeys first, even on Ctrl+C
+    print(f"Unkeyed after {time.time() - start:.1f}s (DTR={ptt.ser.dtr}, RTS={ptt.ser.rts}), {p['port']} closed.")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -383,7 +469,7 @@ def main(argv: list[str] | None = None) -> None:
         # piped/redirected on Windows defaults to cp1252, which can't write emoji or box characters
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(prog="radio-agent")
-    ap.add_argument("cmd", nargs="?", default="run", choices=["run", "devices", "calibrate", "say"])
+    ap.add_argument("cmd", nargs="?", default="run", choices=["run", "devices", "calibrate", "say", "ptt-test"])
     ap.add_argument("text", nargs="?")
     ap.add_argument("-c", "--config", default=None)
     ap.add_argument("--agent", help="override agent.backend (echo, claude-code, anthropic, openai, ollama)")
@@ -392,6 +478,13 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--profile", action="append", metavar="FILE",
                     help="layer a profile over the config, e.g. profiles/stephen-rockall.yaml (repeatable)")
     ap.add_argument("--plain", action="store_true", help="print simple log lines instead of the live screen (for debugging or piping)")
+    ap.add_argument("--voice-test", action="store_true",
+                    help="with say: speak the phonetic alphabet and test callsigns on the PC speakers, one at a time")
+    ap.add_argument("--check-pronunciation", action="store_true",
+                    help="with say: speak the phonetic alphabet and test callsigns through the voice and Whisper, "
+                         "and print which are heard correctly")
+    ap.add_argument("--compare", action="store_true",
+                    help="with --check-pronunciation: also try each word plain, respelled and as DECtalk phonemes")
     a = ap.parse_args(argv)
     cfg = config.load(a.config, a.profile)
     if a.agent:
@@ -423,6 +516,12 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"Suggested squelch_threshold: {max(quiet * 2, (quiet + loud) / 4):.4f}")
                 if loud < 0.02:
                     print("It works, but the signal is quiet – turn the radio volume or the Windows input level up for more headroom.")
+    elif a.cmd == "ptt-test":
+        ptt_test(cfg)
+    elif a.cmd == "say" and a.voice_test:
+        voice_test(cfg)
+    elif a.cmd == "say" and a.check_pronunciation:
+        check_pronunciation(cfg, a.compare)
     elif a.cmd == "say":
         rad = radio.make(cfg)
         Transmitter(cfg, rad, tts.make(cfg)).send(a.text or "Radio check.")

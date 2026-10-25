@@ -152,12 +152,20 @@ class Log:
                 self.event("detail", d["detail"])
         elif name == "tx_started":
             self.talking, self.state_text = True, d.get("display") or d["text"]
-            self.event("tx", d.get("display") or d["text"], ack=d.get("ack", False), cq=d.get("cq", False), **stats)
+            framed = {k: d[k] for k in ("to", "de", "msg") if k in d}  # "<them> <us> <message>", WSJT-X style
+            self.event("tx", d.get("display") or d["text"], ack=d.get("ack", False), cq=d.get("cq", False),
+                       **framed, **stats)
         elif name == "tx_done":
             self.talking, self.state_text = False, ""
+        elif name == "qso_logged":
+            bits = " ".join(b for b in (d["call"], d.get("op_name"), d.get("qth"), d.get("gridsquare")) if b)
+            report = f" {d.get('rst_sent') or '?'}/{d.get('rst_rcvd') or '?'}"
+            self.event("note", f"📒 QSO {'updated' if d.get('update') else 'logged'}: {bits}{report}")
         elif name == "sstv":
             self.sstv_until = time.time() + float(d["seconds"])
-            self.event("sstv", f"[SSTV {d['mode']} · {d['width']}×{d['height']}]",
+            what = d.get("caption") or f"{d['mode']} · {d['width']}×{d['height']}"
+            self.event("sstv", f"[{d.get('label', 'SSTV RX').split()[0]} {what}]", label=d.get("label", "SSTV RX"),
+                       caption=d.get("caption", ""),
                        **{k: d[k] for k in ("id", "mode", "seconds", "header_s", "line_s", "width", "height")})
         elif name == "cq_next":
             self.cq_next, self.cq_paused = d["at"], False

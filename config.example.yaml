@@ -3,9 +3,9 @@
 
 station:
   callsign: "N0CALL"          # YOUR callsign – change this. Spoken phonetically when the station IDs
-  id_every_over: true         # true = ID after every over; false = first reply, every id_interval_seconds, and on sign-off
+  id_every_over: false        # true = full phonetic ID every over; false = first over, every id_interval_seconds, and on sign-off
   id_interval_seconds: 600
-  operator: ""                # your own call, if it's not the station's (shown on the screens)
+  operator: ""                # the station calling in (your handheld's call). Used when their call isn't heard in the over
   # Screen-only: shown on the demo page and the run.bat banner
   name: ""                    # e.g. "Stephen" – the character the agent plays
   qth: ""                     # e.g. "Rockall"
@@ -42,6 +42,7 @@ radio:
     tx_tail_ms: 200
   vox_lead_in_ms: 250         # VOX mode: short tone before speech so VOX opens without clipping words
   max_tx_seconds: 45          # hard cap per transmission; long replies are split into several overs
+  tx_gain: 1.0                # TX level, applied after normalising each over to peak 0.9. <1 quieter, >1 louder (peaks soft-limited)
 
 dmr:
   # Only used when radio.mode is "dmr". Ports must match Analog_Bridge.ini [USRP].
@@ -90,6 +91,14 @@ tts:
   sapi_voice: ""              # e.g. "Microsoft George Desktop"; blank = first British voice installed
   piper_model: ~/piper/en_GB-alan-medium.onnx
   openai_voice: onyx
+  dectalk_path: ""            # DECtalk `say` (or its folder, or the Windows DECtalk.dll folder); blank = PATH, ./dectalk, ~/dectalk
+  dectalk_voice: paul         # paul, harry, frank, dennis, betty, ursula, wendy, rita, kit
+  dectalk_rate: 180           # words per minute
+  fallback: ""                # e.g. "sapi": used (with a warning) if this backend's program isn't installed
+  # Words every voice should say differently. Whole words, any case, added to the built-in list
+  # (WAV, SSTV, QSO, MHz, 73, Rockall...). Map a word to "" to drop a built-in one.
+  pronunciations: {}
+  #   Strathearn: "Strath-ern"
 
 sstv:
   # Say "SSTV" in an over and a slow-scan picture of the station paints on the /demo page; "close" shuts it
@@ -98,6 +107,13 @@ sstv:
   mode: robot36               # robot36 (36 s) | martin1 (115 s)
   folder: sstv                # your own photos to send (jpg/png); none there = the built-in picture
   picture: testcard           # built-in picture: testcard | rockall
+  source: picture             # what "SSTV" sends: picture | wefax (latest NOAA weather chart for the area you name)
+
+wefax:
+  # "send me a weather fax for Biscay" – the latest radiofax chart from NOAA for that area
+  default_region: ne_atlantic # ne_atlantic nw_atlantic tropical_atlantic gulf ne_pacific nw_pacific
+                              # tropical_pacific central_pacific alaska
+  seconds: 8                  # how long a chart takes to paint
 
 cq:
   enabled: false              # the station calls CQ on its own at random intervals, pausing during a QSO
@@ -105,6 +121,32 @@ cq:
   first_after_seconds: 20
   quiet_after_seconds: 45     # resume this long after the last thing heard or said in a QSO
   on_air: false               # allow automatic CQs over the radio (unattended TX – check your licence)
+
+qso:
+  # The station adds every callsign; the agent only writes the message. {me} {them} = callsigns said
+  # plainly ("two M zero D D X"), {me_phonetic} {them_phonetic} = phonetically. A [part] is left out
+  # when the other station's call isn't known (not heard in the over, and no station.operator).
+  new_after_minutes: 10       # nothing exchanged this long = the next over opens a new QSO
+  opening: "[{them_phonetic}, ]this is {me_phonetic}."   # first over of a QSO, and every id_interval_seconds
+  handover: "[Over to {them}, ]{me}, over."
+  short_opening: "[{them}.]"                             # quick back-and-forth
+  short_handover: "{me}, over."
+  continuing: "{me}, continuing."                        # earlier parts of a long reply
+  closing: "Seventy-three, [{them_phonetic}, ]this is {me_phonetic}, clear."
+  cq_answer_minutes: 5        # a new QSO this soon after our CQ = someone answering it: a contact the station leads
+
+weather:
+  # The real weather where the station is, for its weather report (Open-Meteo: free, no key)
+  enabled: true
+  latitude: null              # null = the middle of station.locator
+  longitude: null
+  place: ""                   # blank = station.qth
+
+logbook:
+  # Contacts in ADIF, for your logger / LoTW / QRZ. Callsigns are checked on HamQTH.com when
+  # HAMQTH_USER and HAMQTH_PASS are in .env (a free account)
+  enabled: true
+  file: logs/{callsign}.adi
 
 sidecar:
   # Small web page for the stuff that doesn't speak well: code, diffs, paths, logs.

@@ -121,6 +121,30 @@ def encode(rgb: np.ndarray, mode: str = "robot36", sr: int = 22050, seconds: flo
     return tones.audio()
 
 
+WEFAX_HEADER_S = 1.0  # start tone + phasing, squeezed
+
+
+def encode_wefax(gray: np.ndarray, sr: int = 22050, seconds: float = 8.0) -> np.ndarray:
+    """A radiofax (IOC 576) style signal squeezed into `seconds`: 300 Hz start tone, phasing lines,
+    the chart line by line (black 1500 Hz, white 2300 Hz), 450 Hz stop tone. For the waterfall:
+    a real 120 lpm fax takes ten minutes or more."""
+    h = gray.shape[0]
+    tones = _Tones(sr)
+    tones.add(300, 600)                      # start tone
+    for _ in range(4):                       # phasing: white with a short black pulse
+        tones.add(2300, 92.5)
+        tones.add(1500, 7.5)
+    line_ms = max(1.0, (seconds - WEFAX_HEADER_S - 0.3) * 1000 / h)
+    for row in gray:
+        tones.add(_level(row), line_ms)
+    tones.add(450, 300)                      # stop tone
+    return tones.audio()
+
+
+def wefax_line_seconds(height: int, seconds: float) -> float:
+    return max(0.001, seconds - WEFAX_HEADER_S - 0.3) / height
+
+
 # ---------------------------------------------------------------- the picture
 def _font(size: int, bold: bool = True):
     from PIL import ImageFont

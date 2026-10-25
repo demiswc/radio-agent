@@ -17,13 +17,18 @@ from .sidecar import Log
 class Station:
     def __init__(self, cfg: dict, agent: Agent, log: Log | None = None,
                  ack: Callable[[str], None] | None = None, clock: Callable[[], float] = time.time,
-                 on_sstv: Callable[[str], None] | None = None):
+                 on_sstv: Callable[[str], None] | None = None, sstv_ready: Callable[[str], bool] | None = None,
+                 contacts=None):
         self.cfg = cfg
         self.agent = agent
+        self.contacts = contacts  # contact.Contacts: station notes for the agent, and the logbook
         self.log = log or Log()
         self.ack = ack or (lambda s: None)
         self.on_sstv = on_sstv or (lambda subject: None)  # send a slow-scan picture (doesn't block)
+        # can it go straight away, or should the agent pick the area first ("weather fax" with no place)?
+        self.sstv_ready = sstv_ready or (lambda subject: True)
         self._sstv_this_over = False
+        self._sstv_waiting: str | None = None  # the request, held until the agent's reply
         self.signoff = False  # the reply just given ends the QSO: sign off with the callsign
         self.clock = clock
         lc = cfg["listen"]
@@ -47,8 +52,9 @@ class Station:
     def in_conversation(self) -> bool:
         return self.clock() - self.last_activity < self.window
 
-    def handle(self, text: str = "", dtmf: str = "") -> str | None:
-        """Process one over. Returns what to say back, or None to stay silent."""
+    def handle(self, text: str = "", dtmf: str = "", meta: dict | None = None) -> str | None:
+        """Process one over. Returns what to say back, or None to stay silent.
+        meta: what the radio knows about the caller (DMR caller ID)."""
         text = (text or "").strip()
         now = self.clock()
         self.signoff = False
@@ -60,7 +66,8 @@ class Station:
             self.locked = False
             return self._done(f"[DTMF unlock]", "Unlocked. Go ahead.")
 
-        addressed = (not self.require_wake) or speech.has_wake_word(text, self.wake) or self.in_conversation()
+        addressed = ((not self.require_wake) or speech.has_wake_word(text, self.wake) or self.in_conversation()
+                     or bool(self.contacts and self.contacts.for_us(text)))  # our callsign, or answering our CQ
         if self.locked:
             if speech.has_wake_word(text, self.wake):
                 return "Station locked. Send your PIN on the keypad."
@@ -88,13 +95,19 @@ class Station:
         self.last_request = request
         # Asked for a picture? Send it straight away; the agent still answers as normal
         self._sstv_this_over = bool(request) and speech.wants_sstv(request)
+        self._sstv_waiting = None
         if self._sstv_this_over:
-            self.on_sstv("picture")
+            if self.sstv_ready(request):
+                self.on_sstv(request)
+            else:
+                self._sstv_waiting, self._sstv_this_over = request, False
         if not request:
             return self._done(text, "Listening. Go ahead.")
 
         self.last_activity = now  # keep the conversation open while we think
-        raw = self._think(lambda: self.agent.ask(request), "Roger, stand by.")
+        notes = self.contacts.notes(text, meta) if self.contacts else ""
+        ask = f"{notes}\n{request}" if notes else request
+        raw = self._think(lambda: self.agent.ask(ask), "Roger, stand by.")
         return self._agent_reply(text, raw)
 
     def _think(self, work: Callable[[], str], standby: str) -> str:
@@ -140,12 +153,19 @@ class Station:
 
     def _agent_reply(self, heard: str, raw: str) -> str:
         r = speech.parse_agent_output(raw)
-        if r.sstv and not self._sstv_this_over:  # the agent decided to send one ("SSTV: picture")
+        if r.sstv and not self._sstv_this_over:  # the agent decided to send one ("SSTV: picture", "SSTV: gulf 48h")
             self.on_sstv(r.sstv)
-        self._sstv_this_over = False
+        elif self._sstv_waiting:  # asked for, but the agent didn't pick an area: send the default
+            self.on_sstv(self._sstv_waiting)
+        self._sstv_this_over, self._sstv_waiting = False, None
         self.signoff = r.signoff or speech.sounds_like_goodbye(heard)
         self.pending = r.confirm
-        say = r.say or "Done."
+        if self.contacts and (r.log or self.signoff):
+            self.contacts.log(r.log, closing=self.signoff)  # the logbook; a contact ending unlogged still goes in
+        # the station frames every over itself, so drop any callsigns / "over" / "73" the agent added
+        st = self.cfg["station"]
+        calls = (st["callsign"], st.get("operator") or "", speech.find_callsign(heard, (st["callsign"],)) or "")
+        say = speech.strip_framing(r.say, calls) or "Done."
         if r.confirm:
             say += " Say confirm, or key one, to go ahead. Key nine to cancel."
         return self._done(heard, say, detail=r.detail)

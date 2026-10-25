@@ -76,12 +76,14 @@ main:not(.sstv-open) .sstvcol{border-width:0}
 .sinfo{display:flex;gap:10px;padding:4px 8px;font:12px Consolas,monospace;color:#9fc;background:#15171a;border-bottom:1px solid #000;white-space:nowrap;overflow:hidden}
 .sinfo b{color:#fff;font-weight:600}
 .sinfo .sync{color:#7f7}.sinfo .sync.wait{color:#fc6}
-.screen-box{position:relative;width:100%;aspect-ratio:4/3;background:#000;flex:0 0 auto}
-#sstv-c{position:absolute;inset:0;width:100%;height:100%}
+.screen-box{position:relative;width:100%;aspect-ratio:4/3;max-height:calc(100vh - 260px);background:#000;flex:0 0 auto}
+#sstv-c{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #sstv-scan{position:absolute;left:0;right:0;height:2px;background:#bfffcf;box-shadow:0 0 10px 2px rgba(120,255,150,.8);display:none}
 .sprog{height:4px;background:#000}.sprog i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3c6,#9f9)}
 .sfoot{padding:5px 8px;font:13px Consolas,monospace;color:#ccc;border-bottom:1px solid #000}
 .sfoot.done{color:#7f7}
+.scap{padding:0 8px 6px;font:11px "Segoe UI",sans-serif;color:#9ab;border-bottom:1px solid #000}
+.scap:empty{display:none}
 .gallery{flex:1;min-height:0;overflow:auto;padding:6px 8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start}
 .gallery .g-lbl{width:100%;font:11px "Segoe UI",sans-serif;color:#999;letter-spacing:.06em}
 .gallery img{width:84px;height:63px;object-fit:cover;border:1px solid #444;cursor:pointer;opacity:.75}
@@ -148,6 +150,7 @@ main:not(.sstv-open) .sstvcol{border-width:0}
     <div class="screen-box"><canvas id="sstv-c" width="320" height="240"></canvas><div id="sstv-scan"></div></div>
     <div class="sprog"><i id="s-prog"></i></div>
     <div class="sfoot" id="s-foot">line 0/240</div>
+    <div class="scap" id="s-cap"></div>
     <div class="gallery" id="gallery"><span class="g-lbl">RECEIVED</span></div>
   </aside>
 </main>
@@ -258,7 +261,10 @@ function onEvent(e) {
       if (lastKind !== "cq") sep();
       addRow(band, "cq", cols, esc(e.text)); lastKind = "cq"; return;
     }
-    addRow(band, "tx", cols, him + esc(e.text)); addRow(qso, "tx", cols, him + esc(e.text));
+    // a framed over shows like WSJT-X: "<them> <us> <message>"; the spoken callsigns stay off the row
+    const line = e.de ? (e.to ? `<span class="who">${esc(e.to)}</span> ` : "") + `<span class="who">${esc(e.de)}</span> ` + esc(e.msg)
+                      : him + esc(e.text);
+    addRow(band, "tx", cols, line); addRow(qso, "tx", cols, line);
     if (e.freq) { setMarker("m-tx", e.freq); $("c-tx").textContent = `Tx ${e.freq} Hz`; }
   } else if (e.kind === "sstv") {
     addRow(band, "pic", cols, him + esc(e.text)); addRow(qso, "pic", cols, him + esc(e.text));
@@ -302,19 +308,24 @@ function finished(e) {
   $("s-lines").textContent = `line ${e.height}/${e.height}`;
   $("s-prog").style.width = "100%";
   $("s-foot").textContent = `RX complete · ${S.operator}`; $("s-foot").className = "sfoot done";
+  $("s-cap").textContent = e.caption || "";
   $("s-sync").textContent = "OK"; $("s-sync").className = "sync";
 }
 function showStill(src, e) {
   const img = new Image(); img.src = src;
-  img.onload = () => { sx.drawImage(img, 0, 0, e.width, e.height); finished(e); markThumb(e.id); };
+  img.onload = () => { sc.width = e.width; sc.height = e.height; box(e); sx.drawImage(img, 0, 0); finished(e); markThumb(e.id); };
+}
+function box(e) {   // the picture's own shape: 4:3 for SSTV, taller for a weather chart
+  $("sstv-c").parentElement.style.aspectRatio = `${e.width}/${e.height}`;
+  $("s-mode").textContent = e.mode;
+  $("s-title").textContent = `${e.label || "SSTV RX"} · ${e.mode} · ${S.operator}`;
 }
 async function receive(e, age) {
   const my = ++job, src = `sstv?t=${tok}&id=${e.id}`;
   sc.width = e.width; sc.height = e.height;
-  $("s-mode").textContent = e.mode;
-  $("s-title").textContent = `SSTV RX · ${e.mode} · ${S.operator}`;
-  $("s-save").href = src; $("s-save").download = `sstv-${S.callsign}-${e.utc}.png`;
-  $("s-foot").className = "sfoot";
+  box(e);
+  $("s-save").href = src; $("s-save").download = `${(e.label || "sstv").split(" ")[0].toLowerCase()}-${e.utc}.png`;
+  $("s-foot").className = "sfoot"; $("s-cap").textContent = "";
   openSstv();
   const img = new Image(); img.src = src;
   try { await img.decode(); } catch (err) { $("s-foot").textContent = "picture not available"; return; }
@@ -335,8 +346,10 @@ async function receive(e, age) {
       if (lines > drawn) { sx.drawImage(img, 0, drawn, e.width, lines - drawn, 0, drawn, e.width, lines - drawn); drawn = lines; }
     }
     if (frameNo++ % 2 === 0) noise(drawn, e.height, e.width);
-    scan.style.display = drawn < e.height ? "block" : "none";
-    scan.style.top = `calc(${drawn / e.height * 100}% - 1px)`;
+    if (drawn < e.height) {   // the bright scan line, drawn on the picture itself so it lines up at any size
+      sx.fillStyle = "rgba(190,255,205,.95)"; sx.fillRect(0, drawn, e.width, Math.max(2, e.height / 160));
+    }
+
     $("s-lines").textContent = `line ${drawn}/${e.height}`;
     $("s-foot").textContent = `line ${drawn}/${e.height}`;
     $("s-prog").style.width = Math.min(100, el / e.seconds * 100) + "%";

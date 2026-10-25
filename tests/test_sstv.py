@@ -97,7 +97,7 @@ def test_keyword_sends_at_once_and_only_once():
     sent = []
     st = Station(_cfg(), TagAgent(), on_sstv=sent.append)
     st.handle("send me an SSTV, over")      # keyword already sent it; the agent's tag mustn't send it again
-    assert sent == ["picture"]
+    assert sent == ["send me an SSTV"]
 
 
 def test_close_command():

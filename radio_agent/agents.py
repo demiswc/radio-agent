@@ -21,8 +21,9 @@ Only ask them to repeat if it's truly unintelligible.
 
 Format EVERY reply exactly like this:
 SAY: one to three short plain sentences that will be read aloud over the radio. No code, no file paths \
-longer than a filename, no URLs, no markdown, no lists. Talk like a calm colleague on the radio. Never \
-say "over" or a callsign – the station adds those.
+longer than a filename, no URLs, no markdown, no lists. Talk like a calm colleague on the radio. Write \
+only the content of the over: never start or end with a callsign (yours or theirs), and never say "over", \
+"this is", "de", "73" or "clear" – the station adds all the callsigns and procedure words itself.
 DETAIL: (optional) anything that doesn't speak well – code, diffs, paths, command output. This goes to the \
 operator's phone screen.
 CONFIRM: (only if needed) a one-line description of the change or command you want to make. Use this \
@@ -50,8 +51,17 @@ SSTV_PROMPT = ("SSTV: (optional) the station can send the operator a slow-scan T
 
 
 SIGNOFF_PROMPT = ("SIGNOFF: (optional) when the conversation is coming to an end – they say 73, goodbye or thanks "
-                  "for the contact, or you've clearly wrapped up – say your farewell in the SAY line and add the "
-                  "line 'SIGNOFF: yes'. The station then signs off with your callsign.")
+                  "for the contact, QRT, or you've clearly wrapped up – say your farewell in the SAY line (no 73, "
+                  "callsigns or 'clear') and add the line 'SIGNOFF: yes'. The station then signs off with "
+                  "seventy-three, both callsigns and 'clear'.")
+
+
+LOG_PROMPT = ("LOG: (optional) in a radio contact, once you have the other station's name, QTH and the signal "
+              "report they gave you, read them back to confirm and add one line "
+              "'LOG: name=…; qth=…; rst_sent=…; rst_rcvd=…' (rst_sent is the report you gave them, e.g. 59). The "
+              "station writes it in the logbook. A [Station notes …] line before what they said comes from the "
+              "station, not the operator: use it (who leads the contact, your weather, callsign lookups) but "
+              "don't read it out word for word.")
 
 
 def with_persona(prompt: str, cfg: dict) -> str:
@@ -65,7 +75,9 @@ def with_persona(prompt: str, cfg: dict) -> str:
     persona = (cfg["agent"].get("persona") or "").strip()
     for k, v in fields.items():
         persona = persona.replace("{" + k + "}", str(v))
-    return "\n\n".join(p for p in (prompt, SSTV_PROMPT, SIGNOFF_PROMPT, persona) if p)
+    from .wefax import prompt_help
+    sstv = prompt_help(picture_first=cfg.get("sstv", {}).get("source", "picture") != "wefax")
+    return "\n\n".join(p for p in (prompt, sstv, SIGNOFF_PROMPT, LOG_PROMPT, persona) if p)
 
 
 CONFIRMED_PROMPT = "The operator confirmed over the radio. Go ahead and do this now: {action}\n" \

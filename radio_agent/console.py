@@ -140,11 +140,16 @@ class ConsoleUI:
             self.cq_next, self.cq_paused = float(d["at"]), False
         elif name == "cq_paused":
             self.cq_paused = True
+        elif name == "qso_logged":
+            bits = " ".join(b for b in (d["call"], d.get("op_name"), d.get("qth")) if b)
+            self._block(Text(f"  📒 {'updated' if d.get('update') else 'logged'} {bits} "
+                             f"{d.get('rst_sent') or '?'}/{d.get('rst_rcvd') or '?'} · {d.get('path', '')}", style="cyan"))
         elif name == "sstv":
-            self.sstv = (d["mode"], now, float(d["seconds"]))
+            self.sstv = (d.get("caption") or d["mode"], now, float(d["seconds"]))
+            self.sstv_label = d.get("label", "SSTV RX").split()[0]
         elif name == "sstv_done":
             if self.sstv:
-                self._block(Text(f"  ▦ SSTV {self.sstv[0]} sent · {d.get('path', '')}", style="dim"))
+                self._block(Text(f"  ▦ {self.sstv_label} {self.sstv[0]} · {d.get('path', '')}", style="dim"))
             self.sstv = None
         elif name == "error":
             self._block(self._error(d))
@@ -203,7 +208,7 @@ class ConsoleUI:
         elif self.sstv is not None:
             mode, t0, secs = self.sstv
             done = min(1.0, (now - t0) / secs) if secs else 1.0
-            left.append("▦ SSTV", style="bold cyan")
+            left.append(f"▦ {getattr(self, 'sstv_label', 'SSTV')}", style="bold cyan")
             left.append(f" {mode} ", style="cyan")
             left.append("█" * round(done * 20) + "░" * (20 - round(done * 20)), style="cyan")
             left.append(f" {now - t0:.0f}s / {secs:.0f}s", style="dim")
