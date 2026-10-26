@@ -16,5 +16,11 @@ logs/
 sstv/*
 !sstv/README.txt
 
+# Claude Code worktrees and settings
+.claude/
+
 # Claude Code local settings and worktrees
 .claude/
+
+# DECtalk binaries, if you unzip them here (download them yourself; see README)
+dectalk/

@@ -6,9 +6,10 @@ Events, in the order one exchange produces them:
   over_waiting   more is expected before "over"          text, timeout
   over_finished  a whole over (maybe stitched) is ready  text, rx_s, stt_s, ended_by
   agent_started  the agent is working on it              request
-  tx_started     we're speaking (ack=True: "stand by")   text, ack, db, freq, dur
+  tx_started     we're speaking (ack=True: "stand by")   text, ack, db, freq, dur; to, de, msg (framed over)
   tx_done
   agent_done     the reply is decided                    say, detail, pending, stats
+  qso_logged     a contact went in the logbook           call, op_name, qth, rst_sent, rst_rcvd, gridsquare, path
   ignored        noise / no wake word, no reply          text, reason
   error          something broke, the station carries on summary
 """

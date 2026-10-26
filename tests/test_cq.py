@@ -1,6 +1,6 @@
 import random
 
-from radio_agent import config, cq
+from radio_agent import config, cq, speech
 from radio_agent.events import Bus
 
 
@@ -36,7 +36,8 @@ def test_calls_cq_on_its_own_at_intervals():
     assert calls == ["CQ CQ CQ N0CALL IO37DO"]
     run(caller, clock, 120)
     assert len(calls) == 3                                # then every 60 s
-    assert "November Zero Charlie Alpha Lima Lima" in caller.spoken and "Rockall" in caller.spoken
+    assert speech.unmark(caller.spoken) == ("C Q, C Q, C Q, this is November Zero Charlie Alpha Lima Lima, "
+                                            "November Zero Charlie Alpha Lima Lima, calling C Q and listening.")
 
 
 def test_stops_during_a_qso_and_resumes_after_45_quiet_seconds():

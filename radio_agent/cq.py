@@ -29,7 +29,7 @@ class CQCaller:
         self.squelch = float(cfg["radio"]["squelch_threshold"])
         self.lo, self.hi = (float(x) for x in c["interval_seconds"])
         self.quiet_after = float(c["quiet_after_seconds"])
-        fields = {"callsign": st["callsign"], "phonetic": speech.phonetic(st["callsign"]),
+        fields = {"callsign": st["callsign"], "phonetic": speech.phonetic(st["callsign"], mark=True),
                   "name": st.get("name", ""), "qth": st.get("qth", "") or "the station",
                   "locator": (st.get("locator") or "").upper()}
         self.spoken = c["text"].format(**fields)
