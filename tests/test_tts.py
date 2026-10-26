@@ -112,16 +112,16 @@ def mark(call):
 
 def test_phonetic_id_goes_through_the_table():
     say = tts.Lexicon()
-    assert say(f"This is {mark('MM7DDX')}.") == "This is mike mike sev-en dell-tah dell-tah ecks-ray."
-    assert say(mark("2M0DDX")) == "too mike zeer-oh dell-tah dell-tah ecks-ray"
+    assert say(f"This is {mark('N0CALL')}.") == "This is no-vem-ber zeer-oh char-lee al-fah lee-mah lee-mah."
+    assert say(mark("N0CALL")) == "no-vem-ber zeer-oh char-lee al-fah lee-mah lee-mah"
 
 
 def test_phonetic_table_only_in_the_stations_phonetics():
     say = tts.Lexicon()
     plain = "Mike booked a hotel in Lima for two nights, near the river delta."
     assert say(plain) == plain                                       # ordinary words are spoken normally
-    assert say(f"{plain} This is {mark('MM7DDX')}.") == f"{plain} This is mike mike sev-en dell-tah dell-tah ecks-ray."
-    assert say(f"{mark('MM7DDX')}, 73 from Crieff") == "mike mike sev-en dell-tah dell-tah ecks-ray, seventy three from Creef"
+    assert say(f"{plain} This is {mark('N0CALL')}.") == f"{plain} This is no-vem-ber zeer-oh char-lee al-fah lee-mah lee-mah."
+    assert say(f"{mark('N0CALL')}, 73 from Crieff") == "no-vem-ber zeer-oh char-lee al-fah lee-mah lee-mah, seventy three from Creef"
 
 
 def test_phonetic_table_only_takes_whole_words():
@@ -166,7 +166,7 @@ def test_make_gives_dectalk_phonemes_and_others_respellings(monkeypatch):
 
 def test_heard_chars_reads_whisper_output():
     from radio_agent import voicecheck
-    assert voicecheck.heard_chars("Mike Mike 7, Delta Delta X-Ray.") == "MM7DDX"
-    assert voicecheck.heard_chars("2 Mike Zero, Delta, Delta x-ray") == "2M0DDX"
+    assert voicecheck.heard_chars("November 0, Charlie Alpha Lima Lima.") == "N0CALL"
+    assert voicecheck.heard_chars("November oh Charlie, alfa, Lima lima") == "N0CALL"
     assert voicecheck.heard_chars("DELGA") == "?"
 

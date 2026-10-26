@@ -401,7 +401,7 @@ def _loop(cfg: dict, save_audio: str | None, bus: Bus, ui, rad, say) -> None:
             bus.emit("error", summary=f"{type(e).__name__}: {e}")
 
 
-VOICE_TEST_CALLS = ["MM7DDX", "2M0DDX"]
+VOICE_TEST_CALLS = ["N0CALL"]
 
 
 def voice_test(cfg: dict) -> None:

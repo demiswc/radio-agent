@@ -244,12 +244,13 @@ correctly with. For example `[d'ehltax]` came out as "Delga", but "Dell-tah" is 
 
 Two commands check it:
 
-- `radio-agent say --check-pronunciation -c config.yaml` runs every phonetic word and both test
-  callsigns (MM7DDX, 2M0DDX, plus your own) through the voice and then the station's Whisper model,
-  with no hint prompt, and prints a pass/fail table with what Whisper heard and what the voice was
-  sent. Re-run it whenever you change the voice, the rate or a pronunciation. Add `--compare` to also
-  try each word plain, respelled and as DECtalk phonemes. With DECtalk Paul at 180 wpm it scores
-  37/38. Quebec isn't reliably heard in any form tried so far.
+- `radio-agent say --check-pronunciation -c config.yaml` runs every phonetic word and the
+  test callsign (N0CALL, plus your own and station.operator) through the voice and then the
+  station's Whisper model, with no hint prompt, and prints a pass/fail table with what Whisper
+  heard and what the voice was sent. Re-run it whenever you change the voice, the rate or a
+  pronunciation. Add `--compare` to also try each word plain, respelled and as DECtalk phonemes.
+  With DECtalk Paul at 180 wpm it scored 37/38 (counted with the old second test call). Quebec
+  isn't reliably heard in any form tried so far.
 - `radio-agent say --voice-test -c config.yaml` says them one at a time on the PC speakers, to check
   by ear.
 
@@ -368,18 +369,25 @@ together until you say "over" (`listen.wait_for_over`).
   `screen` unless you set `cq.on_air: true` (see the licence notes).
 - **QSO procedure.** The station adds every callsign itself; the assistant only writes the message
   (anything it adds anyway, like a callsign or a trailing "over", is taken out). With the station as
-  MM7DDX and you as 2M0DDX:
+  N0CALL and you as N1CALL (example calls: use your own), the Stephen profile says:
   - first over of a QSO (nothing exchanged for `qso.new_after_minutes`, default 10), and again at least
-    every `station.id_interval_seconds`: "Two Mike Zero Delta Delta X-ray, this is Mike Mike Seven
-    Delta Delta X-ray. *…message…* Over to 2M0DDX, MM7DDX, over."
-  - the quick back-and-forth in between: "2M0DDX. *…message…* MM7DDX, over." (calls said letter by letter)
-  - a long reply split over several overs ends each earlier part "MM7DDX, continuing."
-  - when you sign off ("73", "seventy-three", "QRT", "…, clear"): "*…message…* Seventy-three, Two
-    Mike Zero Delta Delta X-ray, this is Mike Mike Seven Delta Delta X-ray, clear." The next over
-    starts a new QSO.
+    every `station.id_interval_seconds`: "November One Charlie Alpha Lima Lima, this is November Zero
+    Charlie Alpha Lima Lima base station, Stephen the automated operator. *…message…* Over to N1CALL,
+    N0CALL base station, over."
+  - the quick back-and-forth in between: "N1CALL. *…message…* N0CALL base station, over." (calls
+    said letter by letter)
+  - a long reply split over several overs ends each earlier part "N0CALL base station, continuing."
+  - when you sign off ("73", "seventy-three", "QRT", "…, clear"): "*…message…* Seventy-three,
+    November One Charlie Alpha Lima Lima, this is November Zero Charlie Alpha Lima Lima base station,
+    Stephen the automated operator, clear." The next over starts a new QSO.
+
+  The station and the operator can be the same call, if you're calling your own station from a
+  handheld.
+
+  The built-in defaults leave out "base station" and "Stephen the automated operator".
 
   The other station is the callsign heard in the over that starts the QSO (for example answering a
-  CQ), or else `station.operator`. The demo screen shows each over as WSJT-X does: "2M0DDX MM7DDX
+  CQ), or else `station.operator`. The demo screen shows each over as WSJT-X does: "<them> <me>
   *message*". The wording comes from the `qso:` section of the config, so a profile can use its own
   style (see `config.example.yaml`). Set `station.id_every_over: true` for the full ID every over.
 - **Contacts and the logbook.** How the station behaves depends on who started the QSO:

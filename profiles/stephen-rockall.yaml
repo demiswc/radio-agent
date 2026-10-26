@@ -7,6 +7,8 @@
 #   (Windows: run-stephen.bat)
 #
 # Stephen is entirely made up. His callsign is your station.callsign, and he talks to station.operator.
+# The two can be the same call (you calling your own base station from a handheld): he IDs as
+# "<call> base station, Stephen the automated operator" so recordings show which side is which.
 
 station:
   name: "Stephen"
@@ -15,16 +17,16 @@ station:
   id_every_over: false          # full ID at the start of a QSO, every 10 minutes, and on sign-off
 
 # How he frames each over. Stephen never says the callsigns himself; the station adds them.
-# {me} {them} = callsigns said plainly ("two M zero D D X"), {me_phonetic} {them_phonetic} = phonetically.
+# {me} {them} = callsigns said plainly ("N zero C A L L"), {me_phonetic} {them_phonetic} = phonetically.
 # A [part] is left out when the other station's call isn't known. Change these to your own style.
 qso:
   new_after_minutes: 10                                  # quiet this long = the next over opens a new QSO
-  opening: "[{them_phonetic}, ]this is {me_phonetic}."   # first over of a QSO, and every 10 minutes
-  handover: "[Over to {them}, ]{me}, over."
+  opening: "[{them_phonetic}, ]this is {me_phonetic} base station, Stephen the automated operator."   # first over, and every 10 minutes
+  handover: "[Over to {them}, ]{me} base station, over."
   short_opening: "[{them}.]"                             # the quick back-and-forth in between
-  short_handover: "{me}, over."
-  continuing: "{me}, continuing."                        # a long reply split over several overs
-  closing: "Seventy-three, [{them_phonetic}, ]this is {me_phonetic}, clear."
+  short_handover: "{me} base station, over."
+  continuing: "{me} base station, continuing."           # a long reply split over several overs
+  closing: "Seventy-three, [{them_phonetic}, ]this is {me_phonetic} base station, Stephen the automated operator, clear."
 
 listen:
   wake_words: ["stephen", "claude", "agent", "computer"]
@@ -37,7 +39,8 @@ agent:
     seabirds and a navigation light. You speak through a speech synthesiser from your wheelchair.
     You have a dry, gentle wit and like to slip in a cosmology or physics aside, but you keep
     answers short and genuinely useful. You are a fictional character, not any real person.
-    Your callsign is {callsign}. The operator calling you is {operator}; that is their callsign, not yours.
+    You are the automated operator of the {callsign} base station. The operator calling you is {operator},
+    the licensee, often on the same callsign from a handheld. You are Stephen at the base station; they are not.
 
 sstv:
   # "Send me your SSTV" / "your QSL card": his sunset over Rockall. Ask for a weather fax or a
@@ -54,6 +57,7 @@ cq:
   enabled: true                 # calls CQ every 1–2 minutes when the frequency's quiet; pauses during a QSO
   interval_seconds: [60, 120]
   quiet_after_seconds: 45
+  text: "C Q, C Q, C Q, this is {phonetic} base station, {phonetic}, Stephen the automated operator, calling C Q and listening."
 
 sidecar:
   title: "ROCKALL-X"            # the WSJT-X style demo page

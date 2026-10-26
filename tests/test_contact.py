@@ -18,7 +18,7 @@ class Clock:
 
 def cfg(tmp_path):
     c = config.load(None)
-    c["station"].update(callsign="MM7DDX", operator="2M0DDX", qth="Rockall", locator="IO37do", frequency="145.660")
+    c["station"].update(callsign="N0CALL", operator="N1CALL", qth="Rockall", locator="IO37do", frequency="145.660")
     c["logbook"]["file"] = str(tmp_path / "{callsign}.adi")
     return c
 
@@ -60,7 +60,7 @@ def test_weather_offline_is_none(tmp_path):
 
 # ---------------- HamQTH ----------------
 SESSION = b'<HamQTH xmlns="https://www.hamqth.com"><session><session_id>abc</session_id></session></HamQTH>'
-FOUND = (b'<HamQTH xmlns="https://www.hamqth.com"><search><callsign>2m0ddx</callsign><nick>Demis</nick>'
+FOUND = (b'<HamQTH xmlns="https://www.hamqth.com"><search><callsign>n1call</callsign><nick>Demis</nick>'
          b'<qth>Crieff</qth><country>Scotland</country><grid>IO86fi</grid></search></HamQTH>')
 MISSING = b'<HamQTH xmlns="https://www.hamqth.com"><session><error>Callsign not found</error></session></HamQTH>'
 
@@ -72,30 +72,30 @@ def test_hamqth_lookup_logs_in_once_and_caches():
         calls.append(params)
         if "u" in params:
             return SESSION
-        return FOUND if params["callsign"] == "2M0DDX" else MISSING
+        return FOUND if params["callsign"] == "N1CALL" else MISSING
     h = hamqth.HamQTH("me", "pw", fetch=fetch)
-    info = h.lookup("2m0ddx")
-    assert info == {"callsign": "2m0ddx", "name": "Demis", "qth": "Crieff", "country": "Scotland", "grid": "IO86fi"}
-    assert h.lookup("2M0DDX") == info and h.lookup("G0NONE") is None
+    info = h.lookup("n1call")
+    assert info == {"callsign": "n1call", "name": "Demis", "qth": "Crieff", "country": "Scotland", "grid": "IO86fi"}
+    assert h.lookup("N1CALL") == info and h.lookup("G0NONE") is None
     assert [("u" in c) for c in calls] == [True, False, False]       # one login, two searches, one cached
-    assert hamqth.describe(info, "2M0DDX") == "HamQTH lookup for 2M0DDX: name Demis, QTH Crieff, Scotland, locator IO86fi."
+    assert hamqth.describe(info, "N1CALL") == "HamQTH lookup for N1CALL: name Demis, QTH Crieff, Scotland, locator IO86fi."
 
 
 def test_hamqth_without_an_account_does_nothing():
     h = hamqth.HamQTH("", "", fetch=lambda p: pytest.fail("no lookups without an account"))
-    assert not h.enabled and h.lookup("2M0DDX") is None
+    assert not h.enabled and h.lookup("N1CALL") is None
 
 
 # ---------------- logbook ----------------
 def test_adif_record_and_update(tmp_path):
     clock = Clock()
     lb = logbook.Logbook(cfg(tmp_path), clock=clock)
-    lb.write("2M0DDX", {"name": "Demis", "rst_sent": "59"})
+    lb.write("N1CALL", {"name": "Demis", "rst_sent": "59"})
     clock.t += 120
-    lb.write("2M0DDX", {"name": "Demis", "qth": "Crieff", "rst_sent": "59", "rst_rcvd": "57"}, update=True)
+    lb.write("N1CALL", {"name": "Demis", "qth": "Crieff", "rst_sent": "59", "rst_rcvd": "57"}, update=True)
     text = open(lb.path, encoding="utf-8").read()
     assert text.startswith("radio-agent logbook") and text.count("<EOR>") == 1
-    assert "<CALL:6>2M0DDX" in text and "<QTH:6>Crieff" in text and "<BAND:2>2m <FREQ:7>145.660 <MODE:2>FM" in text
+    assert "<CALL:6>N1CALL" in text and "<QTH:6>Crieff" in text and "<BAND:2>2m <FREQ:7>145.660 <MODE:2>FM" in text
     assert "<TIME_ON:4>0346" in text                                  # the update keeps the start time
     lb._last = None
     lb.write("G4ABC", {"name": "Al"})
@@ -105,7 +105,7 @@ def test_adif_record_and_update(tmp_path):
 # ---------------- running a contact ----------------
 class FakeLookup:
     def lookup(self, call):
-        return {"name": "Demis", "qth": "Crieff", "grid": "IO86fi"} if call == "2M0DDX" else None
+        return {"name": "Demis", "qth": "Crieff", "grid": "IO86fi"} if call == "N1CALL" else None
 
 
 class FakeWeather:
@@ -124,10 +124,10 @@ def desk(tmp_path, bus=None):
 def test_answering_our_cq_is_a_contact_we_lead(tmp_path):
     d, q, clock = desk(tmp_path)
     q.last_cq = clock() - 30
-    notes = d.notes("MM7DDX this is Two Mike Zero Delta Delta X-ray")
-    assert d.mode == contact.CONTACT and d.partner == "2M0DDX"
+    notes = d.notes("N0CALL this is November One Charlie Alpha Lima Lima")
+    assert d.mode == contact.CONTACT and d.partner == "N1CALL"
     assert "answering your CQ" in notes and "Don't offer to help" in notes
-    assert "Weather at Rockall" in notes and "HamQTH lookup for 2M0DDX: name Demis" in notes
+    assert "Weather at Rockall" in notes and "HamQTH lookup for N1CALL: name Demis" in notes
     q.frame(["Hello."])                                              # the reply goes out: the QSO is on
     later = d.notes("my name is Demis, QTH Crieff, you're 5 and 7")
     assert "you lead it" in later and "LOG:" in later and "Weather" not in later
@@ -135,7 +135,7 @@ def test_answering_our_cq_is_a_contact_we_lead(tmp_path):
 
 def test_their_cq_puts_the_operator_in_control(tmp_path):
     d, q, clock = desk(tmp_path)
-    notes = d.notes("CQ CQ CQ this is 2M0DDX calling CQ")
+    notes = d.notes("CQ CQ CQ this is N1CALL calling CQ")
     assert d.mode == contact.THEIR_CQ and "they're in control" in notes
 
 
@@ -147,7 +147,7 @@ def test_a_plain_call_gets_no_contact_script(tmp_path):
 
 def test_for_us_without_the_wake_word(tmp_path):
     d, q, clock = desk(tmp_path)
-    assert d.for_us("Mike Mike Seven Delta Delta X-ray this is G4ABC")
+    assert d.for_us("November Zero Charlie Alpha Lima Lima this is G4ABC")
     assert not d.for_us("anyone about this evening")
     q.last_cq = clock() - 20
     assert d.for_us("anyone about this evening")                     # just after our CQ: someone answering it
@@ -159,9 +159,9 @@ def test_log_line_writes_the_logbook(tmp_path):
     bus.subscribe(lambda n, data: n == "qso_logged" and seen.append(data))
     d, q, clock = desk(tmp_path, bus)
     q.last_cq = clock() - 30
-    d.notes("MM7DDX this is 2M0DDX")
+    d.notes("N0CALL this is N1CALL")
     d.log({"name": "Demis", "qth": "Crieff", "rst_sent": "59", "rst_rcvd": "57"})
-    assert seen[-1]["call"] == "2M0DDX" and seen[-1]["gridsquare"] == "IO86fi"   # grid from HamQTH
+    assert seen[-1]["call"] == "N1CALL" and seen[-1]["gridsquare"] == "IO86fi"   # grid from HamQTH
     assert d.log(None, closing=True) is None                         # already logged: nothing new
     assert "<NAME:5>Demis" in open(d.logbook.path, encoding="utf-8").read()
 
@@ -169,7 +169,7 @@ def test_log_line_writes_the_logbook(tmp_path):
 def test_contact_ending_unlogged_still_goes_in(tmp_path):
     d, q, clock = desk(tmp_path)
     q.last_cq = clock() - 30
-    d.notes("MM7DDX this is 2M0DDX")
+    d.notes("N0CALL this is N1CALL")
     d.log(None, closing=True)
     assert "details incomplete" in open(d.logbook.path, encoding="utf-8").read()
 
@@ -183,7 +183,7 @@ def test_station_passes_notes_and_logs(tmp_path):
     q.last_cq = clock() - 30
     agent = Contacter()
     st = Station(cfg(tmp_path), agent, contacts=d)                   # wake word required: our call wakes it
-    assert st.handle("MM7DDX this is 2M0DDX, name Demis, QTH Crieff, you're 5 7") == \
+    assert st.handle("N0CALL this is N1CALL, name Demis, QTH Crieff, you're 5 7") == \
         "Thanks Demis, Crieff, five seven. Logged."
     assert agent.asked.startswith("[Station notes") and "answering your CQ" in agent.asked
     assert d.logged["name"] == "Demis"

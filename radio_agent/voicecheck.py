@@ -12,14 +12,14 @@ import re
 
 from . import speech, stt, tts
 
-TEST_CALLS = ["MM7DDX", "2M0DDX"]
+TEST_CALLS = ["N0CALL"]
 # what Whisper writes for words that sound the same: "2 mic zero" is Two Mike Zero
 _ALIASES = {"mic": "M", "alfa": "A", "juliett": "J", "whisky": "W", "xray": "X", "to": "2", "too": "2", "for": "4",
             "oh": "0", "nought": "0", "niner": "9", "won": "1", "ate": "8"}
 
 
 def heard_chars(text: str) -> str:
-    """What Whisper wrote, as callsign characters: "Mike Mike 7, Delta Delta X-Ray." -> "MM7DDX"."""
+    """What Whisper wrote, as callsign characters: "November 0, Charlie Alpha Lima Lima." -> "N0CALL"."""
     out = []
     for tok in re.findall(r"[a-z0-9]+", (text or "").lower().replace("x-ray", "xray").replace("x ray", "xray").replace("fox trot", "foxtrot")):
         if tok.isdigit():

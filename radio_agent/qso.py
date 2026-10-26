@@ -6,7 +6,7 @@
   signing off           "<message> Seventy-three, <them phonetic>, this is <me phonetic>, clear."
 
 The phrases are templates in the qso section of the config (a profile can set its own style). They can
-use {me} {them} (said plainly: "two M zero D D X") and {me_phonetic} {them_phonetic}. A part in
+use {me} {them} (said plainly: "N zero C A L L") and {me_phonetic} {them_phonetic}. A part in
 [square brackets] is left out when a callsign in it isn't known, e.g. "[Over to {them}, ]{me}, over."
 """
 from __future__ import annotations
@@ -23,7 +23,7 @@ from . import speech
 @dataclass
 class Over:
     spoken: str     # what the voice says (phonetics marked, see speech.phonetic)
-    to: str         # the WSJT-X style row on the demo screen: "2M0DDX MM7DDX <msg>"
+    to: str         # the WSJT-X style row on the demo screen: "<them> <me> <msg>"
     de: str
     msg: str
 

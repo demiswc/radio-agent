@@ -19,7 +19,7 @@ def band(mhz: float) -> str:
 
 
 def record(fields: dict) -> str:
-    """One ADIF record: <CALL:6>2M0DDX <NAME:5>Demis … <EOR>"""
+    """One ADIF record: <CALL:6>N1CALL <NAME:5>Demis … <EOR>"""
     return " ".join(f"<{k.upper()}:{len(str(v))}>{v}" for k, v in fields.items() if v not in (None, "")) + " <EOR>\n"
 
 

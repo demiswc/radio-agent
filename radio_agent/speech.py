@@ -20,7 +20,7 @@ PHON_OPEN, PHON_CLOSE = "", ""
 
 
 def phonetic(callsign: str, mark: bool = False) -> str:
-    """ "MM7DDX" -> "Mike Mike Seven Delta Delta X-ray". mark=True wraps it for the voice (see unmark)."""
+    """ "N0CALL" -> "November Zero Charlie Alpha Lima Lima". mark=True wraps it for the voice (see unmark)."""
     words = " ".join(NATO.get(ch, ch) for ch in callsign.upper())
     return f"{PHON_OPEN}{words}{PHON_CLOSE}" if mark else words
 
@@ -35,11 +35,11 @@ _DIGITS = {"0": "zero", "1": "one", "2": "two", "3": "three", "4": "four", "5": 
 
 
 def spell(callsign: str) -> str:
-    """A callsign said plainly, letter by letter: "2M0DDX" -> "two M zero D D X"."""
+    """A callsign said plainly, letter by letter: "N0CALL" -> "N zero C A L L"."""
     return " ".join(_DIGITS.get(ch, ch) for ch in callsign.upper())
 
 
-# A callsign as written: 2M0DDX, MM7DDX, G4ABC, N0CALL, M0XYZ/P
+# A callsign as written: N0CALL, G4ABC, M0XYZ/P
 CALLSIGN = r"(?:[A-Z]{1,2}|\d[A-Z]{1,2}|[A-Z]\d)\d{1,2}[A-Z]{1,4}(?:/[A-Z0-9]{1,4})?"
 _CALL_RE = re.compile(CALLSIGN)
 _SPOKEN = {**{v.lower().replace("-", ""): k for k, v in NATO.items() if k != "/"}, "alfa": "A", "juliett": "J",
@@ -47,8 +47,8 @@ _SPOKEN = {**{v.lower().replace("-", ""): k for k, v in NATO.items() if k != "/"
 
 
 def find_callsign(text: str, exclude: tuple[str, ...] = ()) -> str | None:
-    """The first callsign in an over that isn't one of ours, written ("2M0DDX", "2 M 0 D D X") or
-    phonetic ("Two Mike Zero Delta Delta X-ray"). None if there isn't one."""
+    """The first callsign in an over that isn't one of ours, written ("N1CALL", "N 1 C A L L") or
+    phonetic ("November One Charlie Alpha Lima Lima"). None if there isn't one."""
     skip = {c.upper() for c in exclude if c}
     return next((c for c in callsigns_in(text) if c.upper() not in skip), None)
 
@@ -153,7 +153,7 @@ _GOODBYE = re.compile(
     r"\b((?<!line )(?<!port )(?<!issue )(?<!number )(?<!version )(?<!page )(?<!step )(?<!#)73s?|seventy[\s-]?three|seven three|good\s?bye|bye(\s?bye)?|cheerio|signing off|sign off|i'?m clear|"
     r"going clear|thanks for the (qso|contact|chat)|(nice|good|great) (talking|chatting|speaking) (to|with) you|"
     r"catch you later|until next time|speak (to you )?soon|qrt)\b", re.I)
-# "clear" ending the over: "clear", "Thanks Stephen, clear", "2M0DDX clear" (not "is that clear?")
+# "clear" ending the over: "clear", "Thanks Stephen, clear", "N1CALL clear" (not "is that clear?")
 _CLEAR = re.compile(r"(^|[,.!;]\s*|\b\w*\d\w*\s+|\b(and|now|so)\s+)clear[\s.!]*$", re.I)
 
 

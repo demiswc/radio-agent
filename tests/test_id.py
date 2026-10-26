@@ -6,10 +6,10 @@ from radio_agent.events import Bus
 from radio_agent.sidecar import Log
 from radio_agent.station import Station
 
-ME = "Mike Mike Seven Delta Delta X-ray"           # MM7DDX, the station (Stephen)
-THEM = "Two Mike Zero Delta Delta X-ray"           # 2M0DDX, the operator calling in
-ME_PLAIN, THEM_PLAIN = "M M seven D D X", "two M zero D D X"
-SHORT = "Two M zero D D X"                         # their call starting a middle over
+ME = "November Zero Charlie Alpha Lima Lima"       # N0CALL, the station (Stephen)
+THEM = "November One Charlie Alpha Lima Lima"      # N1CALL, the operator calling in
+ME_PLAIN, THEM_PLAIN = "N zero C A L L", "N one C A L L"
+SHORT = "N one C A L L"                            # their call starting a middle over
 
 
 class Clock:
@@ -31,9 +31,9 @@ class Recorder:
         self.lines.append(line)
 
 
-def tx(reply="screen", operator="2M0DDX", **station):
+def tx(reply="screen", operator="N1CALL", **station):
     cfg = config.load(None)
-    cfg["station"].update(callsign="MM7DDX", operator=operator, id_every_over=False, id_interval_seconds=600,
+    cfg["station"].update(callsign="N0CALL", operator=operator, id_every_over=False, id_interval_seconds=600,
                           **station)
     cfg["radio"].update(reply=reply, mode="soundcard")
     bus, said, rows = Bus(), [], []
@@ -50,7 +50,7 @@ def test_first_over_has_the_full_phonetic_id(clock):
     t.send("Good evening, thanks for the call.")
     assert said[-1] == (f"{THEM}, this is {ME}. Good evening, thanks for the call. "
                         f"Over to {THEM_PLAIN}, {ME_PLAIN}, over.")
-    assert (rows[-1]["to"], rows[-1]["de"], rows[-1]["msg"]) == ("2M0DDX", "MM7DDX", "Good evening, thanks for the call.")
+    assert (rows[-1]["to"], rows[-1]["de"], rows[-1]["msg"]) == ("N1CALL", "N0CALL", "Good evening, thanks for the call.")
 
 
 def test_middle_overs_use_the_short_form(clock):
@@ -116,26 +116,26 @@ def test_stand_by_never_carries_callsigns(clock):
 
 def test_cq_then_the_answer_opens_a_qso_with_their_heard_callsign(clock):
     t, said, _, _ = tx(operator="")
-    t.send_cq(f"C Q, C Q, C Q, this is {speech.phonetic('MM7DDX', mark=True)}.", "CQ CQ CQ MM7DDX")
+    t.send_cq(f"C Q, C Q, C Q, this is {speech.phonetic('N0CALL', mark=True)}.", "CQ CQ CQ N0CALL")
     assert said[-1] == f"C Q, C Q, C Q, this is {ME}."    # the screens never see the phonetic marks
     clock.t += 20
-    t.send("Good evening, you're five and nine.", heard="MM7DDX this is G4ABC, how copy?")
+    t.send("Good evening, you're five and nine.", heard="N0CALL this is G4ABC, how copy?")
     assert said[-1].startswith("Golf Four Alpha Bravo Charlie, this is ")
-    assert said[-1].endswith("Over to G four A B C, M M seven D D X, over.")
+    assert said[-1].endswith("Over to G four A B C, N zero C A L L, over.")
 
 
 def test_cq_ends_the_qso_so_the_answer_gets_the_full_id(clock):
     t, said, _, _ = tx()
     t.send("Hello.")
     clock.t += 50
-    t.send_cq("C Q.", "CQ CQ CQ MM7DDX")
+    t.send_cq("C Q.", "CQ CQ CQ N0CALL")
     clock.t += 10
     t.send("Hello, who's that?")                           # nobody's call heard: station.operator
     assert said[-1].startswith(f"{THEM}, this is {ME}.")
 
 
 def test_unknown_other_station_drops_their_part():
-    q = qso.QSO({"station": {"callsign": "MM7DDX", "operator": ""}, "qso": config.DEFAULTS["qso"]}, clock=lambda: 0)
+    q = qso.QSO({"station": {"callsign": "N0CALL", "operator": ""}, "qso": config.DEFAULTS["qso"]}, clock=lambda: 0)
     over = q.frame(["Hello."])[0]
     assert speech.unmark(over.spoken) == f"This is {ME}. Hello. {ME_PLAIN}, over."
 
@@ -149,29 +149,29 @@ def test_templates_come_from_the_config(clock):
 
 # ---------------- what the agent says ----------------
 @pytest.mark.parametrize("raw,clean", [
-    ("2M0DDX, this is MM7DDX. The tests pass. MM7DDX, over.", "The tests pass."),
+    ("N1CALL, this is N0CALL. The tests pass. N0CALL, over.", "The tests pass."),
     (f"{THEM}, the build is green, over", "the build is green."),
-    ("All good. Over to 2M0DDX, MM7DDX, over", "All good."),
-    ("Lovely to chat, 73, this is MM7DDX, clear.", "Lovely to chat."),
+    ("All good. Over to N1CALL, N0CALL, over", "All good."),
+    ("Lovely to chat, 73, this is N0CALL, clear.", "Lovely to chat."),
     ("The coast is clear.", "The coast is clear."),
     ("Fix line 73", "Fix line 73"),
 ])
 def test_agent_added_callsigns_and_over_are_stripped(raw, clean):
-    assert speech.strip_framing(raw, ("MM7DDX", "2M0DDX")) == clean
+    assert speech.strip_framing(raw, ("N0CALL", "N1CALL")) == clean
 
 
 def test_station_strips_framing_from_the_agent():
     class Chatty(EchoAgent):
         def ask(self, text):
-            return "SAY: 2M0DDX this is MM7DDX, all tests pass. Over."
+            return "SAY: N1CALL this is N0CALL, all tests pass. Over."
     c = _cfg()
-    c["station"].update(callsign="MM7DDX", operator="2M0DDX")
+    c["station"].update(callsign="N0CALL", operator="N1CALL")
     assert Station(c, Chatty()).handle("how are the tests") == "all tests pass."
 
 
 # ---------------- signing off ----------------
 @pytest.mark.parametrize("text", ["Thanks for the contact, 73, over", "cheerio Stephen", "seventy three",
-                                  "seventy-three", "QRT", "thanks, clear", "2M0DDX clear", "clear"])
+                                  "seventy-three", "QRT", "thanks, clear", "N1CALL clear", "clear"])
 def test_station_signs_off_when_the_operator_says_goodbye(text):
     st = Station(_cfg(), EchoAgent())
     st.handle(text)
@@ -212,7 +212,8 @@ def test_goodbye_phrases():
 
 
 def test_callsign_heard_in_an_over():
-    assert speech.find_callsign(f"Stephen, this is {THEM}, over", ("MM7DDX",)) == "2M0DDX"
-    assert speech.find_callsign("MM7DDX this is 2M0DDX", ("MM7DDX",)) == "2M0DDX"
-    assert speech.find_callsign("2 M 0 D D X calling", ()) == "2M0DDX"
+    assert speech.find_callsign(f"Stephen, this is {THEM}, over", ("N0CALL",)) == "N1CALL"
+    assert speech.find_callsign("N0CALL this is N1CALL", ("N0CALL",)) == "N1CALL"
+    assert speech.find_callsign("N0CALL this is N0CALL", ("N0CALL",)) is None   # same call as ours: station.operator
+    assert speech.find_callsign("N 1 C A L L calling", ()) == "N1CALL"
     assert speech.find_callsign("I need a hotel in Lima", ()) is None

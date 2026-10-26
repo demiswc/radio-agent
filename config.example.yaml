@@ -124,7 +124,7 @@ cq:
 
 qso:
   # The station adds every callsign; the agent only writes the message. {me} {them} = callsigns said
-  # plainly ("two M zero D D X"), {me_phonetic} {them_phonetic} = phonetically. A [part] is left out
+  # plainly ("N zero C A L L"), {me_phonetic} {them_phonetic} = phonetically. A [part] is left out
   # when the other station's call isn't known (not heard in the over, and no station.operator).
   new_after_minutes: 10       # nothing exchanged this long = the next over opens a new QSO
   opening: "[{them_phonetic}, ]this is {me_phonetic}."   # first over of a QSO, and every id_interval_seconds
